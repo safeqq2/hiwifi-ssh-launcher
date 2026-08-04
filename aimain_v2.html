@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极路由 SSH 端口获取器（自动/手动）</title>
+    <!-- 使用 CryptoJS 进行 HMAC-SHA1 和 Base64 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js">
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 20px;
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 840px;
+            padding: 30px 35px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1 small {
+            font-size: 14px;
+            font-weight: 400;
+            color: #888;
+        }
+
+        .subtitle {
+            color: #555;
+            font-size: 14px;
+            margin-bottom: 25px;
+            border-left: 4px solid #4a90d9;
+            padding-left: 14px;
+            background: #f8faff;
+            border-radius: 0 8px 8px 0;
+            line-height: 1.6;
+        }
+
+        .mode-switch {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+
+        .mode-switch label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .mode-switch input[type="radio"] {
+            accent-color: #4a90d9;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .input-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .input-group label {
+            width: 100px;
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .input-group input[type="text"] {
+            flex: 1;
+            min-width: 180px;
+            padding: 9px 14px;
+            border: 1.5px solid #d0d7de;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: 0.2s;
+            background: #fafbfc;
+            font-family: monospace;
+        }
+        .input-group input[type="text"]:focus {
+            border-color: #4a90d9;
+            box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+            background: #fff;
+        }
+        .input-group input[type="text"]:disabled {
+            background: #e9ecef;
+            color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .input-group select {
+            padding: 9px 12px;
+            border: 1.5px solid #d0d7de;
+            border-radius: 8px;
+            background: #fafbfc;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+        .input-group select:focus {
+            border-color: #4a90d9;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 6px 0 16px 0;
+        }
+
+        .btn {
+            padding: 10px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: #4a90d9;
+            color: white;
+            box-shadow: 0 2px 6px rgba(74, 144, 217, 0.3);
+        }
+        .btn-primary:hover {
+            background: #357abd;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 144, 217, 0.4);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: #2ea44f;
+            color: white;
+            box-shadow: 0 2px 6px rgba(46, 164, 79, 0.3);
+        }
+        .btn-success:hover {
+            background: #22863a;
+            transform: translateY(-1px);
+        }
+        .btn-success:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #4a90d9;
+            border: 1.5px solid #4a90d9;
+        }
+        .btn-outline:hover {
+            background: #eef5ff;
+        }
+
+        .log-area {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            font-family: "JetBrains Mono", "Fira Code", monospace;
+            font-size: 13px;
+            border-radius: 10px;
+            padding: 16px 18px;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.7;
+            margin-top: 8px;
+            border: 1px solid #2d2d44;
+            box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .log-area .log-info {
+            color: #89b4fa;
+        }
+        .log-area .log-success {
+            color: #a6e3a1;
+        }
+        .log-area .log-error {
+            color: #f38ba8;
+        }
+        .log-area .log-warn {
+            color: #f9e2af;
+        }
+        .log-area .log-divider {
+            color: #585b70;
+        }
+        .log-area .log-highlight {
+            color: #f5c2e7;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            font-size: 14px;
+            color: #444;
+        }
+
+        .status-bar .progress {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid #d0d7de;
+            border-radius: 50%;
+            border-top-color: #4a90d9;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .footer {
+            margin-top: 18px;
+            font-size: 13px;
+            color: #999;
+            text-align: center;
+            border-top: 1px solid #eaeef2;
+            padding-top: 16px;
+        }
+
+        .log-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        .log-area::-webkit-scrollbar-track {
+            background: #1e1e2e;
+        }
+        .log-area::-webkit-scrollbar-thumb {
+            background: #45475a;
+            border-radius: 4px;
+        }
+
+        .copy-btn {
+            background: none;
+            border: none;
+            color: #4a90d9;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .copy-btn:hover {
+            background: #eef5ff;
+        }
+
+        .manual-fields {
+            background: #f8f9fc;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            border: 1px solid #e9ecef;
+            display: none;
+        }
+
+        .manual-fields.visible {
+            display: block;
+        }
+
+        .concat-tip {
+            font-size: 13px;
+            color: #555;
+            background: #f0f2f5;
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin: 8px 0 4px 0;
+            border-left: 3px solid #4a90d9;
+        }
+        .concat-tip strong {
+            color: #1a1a2e;
+        }
+        .concat-tip code {
+            background: #e9ecef;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        /* 超链接样式 */
+        .label-link {
+            color: #4a90d9;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dashed #4a90d9;
+        }
+        .label-link:hover {
+            text-decoration: underline;
+        }
+
+        .protocol-select {
+            width: 90px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>
+            🔐 极路由 SSH 临时端口
+            <small>自动 / 手动</small>
+        </h1>
+        <div class="subtitle">
+            可通过自动获取或手动输入 UUID + local_token 来生成 cloud_token，并获取 SSH 端口（需路由器可达）
+        </div>
+
+        <!-- 模式切换 -->
+        <div class="mode-switch">
+            <label>
+                <input type="radio" name="mode" value="auto" checked> 🤖 自动模式
+            </label>
+            <label>
+                <input type="radio" name="mode" value="manual"> ✏️ 手动模式
+            </label>
+            <span style="font-size:13px;color:#888;margin-left:auto;">跨网络可用手动输入</span>
+        </div>
+
+        <!-- IP 和协议选择 -->
+        <div class="input-group">
+            <label>路由器 IP</label>
+            <input type="text" id="ipInput" value="192.168.199.1" placeholder="例如 192.168.199.1" />
+            <select id="protocolSelect" class="protocol-select">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+            </select>
+        </div>
+
+        <!-- 手动输入区域（默认隐藏） -->
+        <div class="manual-fields" id="manualFields">
+            <div class="input-group">
+                <label>
+                    <a href="#" target="_blank" id="uuidLink" class="label-link">UUID</a>
+                </label>
+                <input type="text" id="uuidInput" placeholder="从自动模式或其它途径获取" />
+            </div>
+            <div class="input-group">
+                <label>
+                    <a href="#" target="_blank" id="localTokenLink" class="label-link">Local Token</a>
+                </label>
+                <input type="text" id="localTokenInput" placeholder="Base64 字符串" />
+            </div>
+
+            <!-- 拼接说明（默认显示） -->
+            <div class="concat-tip">
+                <strong>📌 拼接方式备忘：</strong><br>
+                <code>local_token</code> 是 Base64 编码，解码后为逗号分隔的多个字段，<br>
+                取 <strong>前 3 个</strong>字段，将第 3 个字段（时间戳）<strong>+1</strong>，然后重新拼接为<br>
+                <code>字段1,字段2,新时间戳</code> → 作为 HMAC-SHA1 的原文（msg）。<br>
+                <span style="color:#888;">（在运行日志中会显示实际拼接结果）</span>
+            </div>
+        </div>
+
+        <!-- 按钮组 -->
+        <div class="btn-group">
+            <button class="btn btn-primary" id="autoBtn">▶ 自动获取并生成</button>
+            <button class="btn btn-success" id="manualBtn" disabled>▶ 手动生成</button>
+            <button class="btn btn-outline" id="clearLogBtn" style="margin-left:auto;">🗑 清空日志</button>
+        </div>
+
+        <!-- 日志 -->
+        <div class="log-area" id="logArea">
+            <span class="log-info">等待操作……</span>
+        </div>
+
+        <div class="status-bar">
+            <div class="progress">
+                <span id="statusText">就绪</span>
+                <span class="spinner" id="spinner" style="display:none;"></span>
+            </div>
+            <div>
+                <button class="copy-btn" id="copyLogBtn">📋 复制日志</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            ⚠️ 浏览器跨域限制：若请求失败，请确保在路由器同网段使用，或使用代理/插件。<br>
+            ✅ 所有计算均在浏览器内完成，无需后端，完全静态。
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            "use strict";
+
+            // DOM 元素
+            const ipInput = document.getElementById('ipInput');
+            const protocolSelect = document.getElementById('protocolSelect');
+            const uuidInput = document.getElementById('uuidInput');
+            const localTokenInput = document.getElementById('localTokenInput');
+            const autoBtn = document.getElementById('autoBtn');
+            const manualBtn = document.getElementById('manualBtn');
+            const clearLogBtn = document.getElementById('clearLogBtn');
+            const copyLogBtn = document.getElementById('copyLogBtn');
+            const logArea = document.getElementById('logArea');
+            const statusText = document.getElementById('statusText');
+            const spinner = document.getElementById('spinner');
+            const manualFields = document.getElementById('manualFields');
+            const modeRadios = document.querySelectorAll('input[name="mode"]');
+            const uuidLink = document.getElementById('uuidLink');
+            const localTokenLink = document.getElementById('localTokenLink');
+
+            const RETRY = 10;
+            const SLEEP_SECOND = 10;
+
+            // ---- 辅助 ----
+            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+            function appendLog(message, className = 'log-info') {
+                const span = document.createElement('span');
+                span.className = className;
+                span.textContent = message;
+                logArea.appendChild(span);
+                logArea.appendChild(document.createElement('br'));
+                logArea.scrollTop = logArea.scrollHeight;
+            }
+
+            function clearLog() {
+                logArea.innerHTML = '';
+            }
+
+            function setStatus(text, busy = false) {
+                statusText.textContent = text;
+                spinner.style.display = busy ? 'inline-block' : 'none';
+            }
+
+            function isValidIP(ip) {
+                const parts = ip.trim().split('.');
+                if (parts.length !== 4) return false;
+                return parts.every(p => {
+                    const num = Number(p);
+                    return !isNaN(num) && num >= 0 && num <= 255 && p === String(num);
+                });
+            }
+
+            // 获取当前协议和 IP
+            function getBaseURL() {
+                const protocol = protocolSelect.value;
+                const ip = ipInput.value.trim();
+                return `${protocol}://${ip}`;
+            }
+
+            // 更新超链接
+            function updateLinks() {
+                const base = getBaseURL();
+                uuidLink.href = `${base}/cgi-bin/turbo/proxy/router_info`;
+                localTokenLink.href = `${base}/local-ssh/api?method=get`;
+            }
+
+            // 监听 IP 和协议变化
+            ipInput.addEventListener('input', updateLinks);
+            protocolSelect.addEventListener('change', updateLinks);
+
+            // 模式切换
+            function updateMode() {
+                const manual = document.querySelector('input[name="mode"]:checked').value === 'manual';
+                manualFields.classList.toggle('visible', manual);
+                manualBtn.disabled = !manual;
+                autoBtn.disabled = manual;
+                // 更新链接（手动模式下显示）
+                updateLinks();
+            }
+            modeRadios.forEach(radio => radio.addEventListener('change', updateMode));
+            updateMode();
+
+            // ---- 核心 API ----
+            function generateUrl(api, ...args) {
+                let path = api;
+                if (args.length > 0) {
+                    path = api.replace('%s', args[0]);
+                }
+                return `${getBaseURL()}${path}`;
+            }
+
+            async function httpGet(url) {
+                url = url.replace(/\+/g, '%2B');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                try {
+                    const resp = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const text = await resp.text();
+                    if (text.includes('系统忙，请稍后重试')) {
+                        throw new Error('系统忙，请稍后重试');
+                    }
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        throw new Error(`JSON 解析失败: ${text}`);
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    if (err.name === 'AbortError') throw new Error('请求超时');
+                    throw err;
+                }
+            }
+
+            async function getUUID() {
+                const url = generateUrl('/cgi-bin/turbo/proxy/router_info');
+                const data = await httpGet(url);
+                if (!data.data || !data.data.uuid) throw new Error('无效的 UUID 响应');
+                return data.data.uuid;
+            }
+
+            async function getLocalToken() {
+                const url = generateUrl('/local-ssh/');
+                const data = await httpGet(url);
+                if (!data.data) throw new Error('无效的 local_token 响应');
+                return data.data;
+            }
+
+            // 解码并拼接消息（同时返回原始解码后的数组，供展示）
+            function tokenToMsgWithDebug(localToken) {
+                let decoded;
+                try { decoded = atob(localToken); } catch (e) { throw new Error('Base64 解码失败'); }
+                const parts = decoded.split(',');
+                if (parts.length < 3) throw new Error('token 格式错误，至少需要3个字段');
+                let ts = parseInt(parts[2], 10);
+                if (isNaN(ts)) throw new Error('时间戳格式无效');
+                const newTs = ts + 1;
+                const msgParts = [parts[0], parts[1], String(newTs)];
+                const msg = msgParts.join(',');
+                return { msg, decoded, originalParts: parts, newTs };
+            }
+
+            function getCloudToken(uuid, localToken) {
+                const { msg } = tokenToMsgWithDebug(localToken);
+                const key = CryptoJS.SHA1(uuid);
+                const hmac = CryptoJS.HmacSHA1(msg, key);
+                return CryptoJS.enc.Base64.stringify(hmac);
+            }
+
+            async function getLocalSsh(cloudToken) {
+                const url = generateUrl('/local-ssh/api?method=valid&data=%s', cloudToken);
+                const data = await httpGet(url);
+                const result = data.data || '';
+                if (!result.includes('Success: ssh port is ')) {
+                    throw new Error(`未知错误: ${result}`);
+                }
+                return result.replace('Success: ssh port is ', '').trim();
+            }
+
+            // ---- 显示拼接调试信息 ----
+            function showConcatDebug(localToken) {
+                try {
+                    const { decoded, msg, newTs } = tokenToMsgWithDebug(localToken);
+                    appendLog(`🔍 解码后的 local_token: ${decoded}`, 'log-highlight');
+                    appendLog(`➡️ 取前3字段，时间戳 +1 → 拼接消息: ${msg}`, 'log-highlight');
+                    return msg;
+                } catch (e) {
+                    appendLog(`⚠️ 拼接调试失败: ${e.message}`, 'log-warn');
+                    return null;
+                }
+            }
+
+            // ---- 主流程（自动） ----
+            async function autoLaunch() {
+                if (autoBtn.disabled) return;
+                autoBtn.disabled = true;
+                setStatus('自动获取中…', true);
+                clearLog();
+                appendLog('🚀 自动模式启动', 'log-info');
+
+                let uuid = '',
+                    localToken = '',
+                    cloudToken = '';
+                let success = false;
+
+                for (let i = 0; i <= RETRY; i++) {
+                    if (i > 0) {
+                        appendLog(`⏳ 等待 ${SLEEP_SECOND} 秒后重试 (第 ${i} 次)`, 'log-warn');
+                        await sleep(SLEEP_SECOND * 1000);
+                        appendLog('----------------------------------------------------------------', 'log-divider');
+                        appendLog(`🔄 第 ${i} 次重试`, 'log-warn');
+                    }
+
+                    try {
+                        appendLog('📡 获取 UUID ...', 'log-info');
+                        uuid = await getUUID();
+                        appendLog(`✅ UUID: ${uuid}`, 'log-success');
+
+                        appendLog('🔑 获取 local_token ...', 'log-info');
+                        localToken = await getLocalToken();
+                        appendLog(`✅ local_token: ${localToken}`, 'log-success');
+
+                        // 显示拼接过程
+                        appendLog('📐 拼接消息（调试）', 'log-info');
+                        const msg = showConcatDebug(localToken);
+                        if (!msg) throw new Error('拼接消息失败');
+
+                        appendLog('🧮 生成 cloud_token ...', 'log-info');
+                        cloudToken = getCloudToken(uuid, localToken);
+                        appendLog(`✅ cloud_token: ${cloudToken}`, 'log-success');
+
+                        appendLog('🔌 获取 SSH 临时端口 ...', 'log-info');
+                        const port = await getLocalSsh(cloudToken);
+                        appendLog(`🎉 成功！SSH 端口: ${port} （有效期 5 分钟）`, 'log-success');
+                        success = true;
+                        setStatus('完成', false);
+                        // 自动填充到手动输入框，方便复制
+                        uuidInput.value = uuid;
+                        localTokenInput.value = localToken;
+                        break;
+                    } catch (err) {
+                        const msg = err.message || String(err);
+                        if (msg.includes('系统忙')) {
+                            appendLog(`⚠️ ${msg}`, 'log-warn');
+                        } else {
+                            appendLog(`❌ 错误: ${msg}`, 'log-error');
+                        }
+                    }
+                }
+
+                if (!success) {
+                    appendLog('❌ 自动获取失败', 'log-error');
+                    appendLog(`IP: ${ipInput.value.trim()}`, 'log-info');
+                    setStatus('失败', false);
+                }
+
+                autoBtn.disabled = false;
+            }
+
+            // ---- 主流程（手动） ----
+            async function manualLaunch() {
+                if (manualBtn.disabled) return;
+                const ip = ipInput.value.trim();
+                if (!isValidIP(ip)) {
+                    appendLog('❌ 请输入合法的 IP 地址', 'log-error');
+                    return;
+                }
+                const uuid = uuidInput.value.trim();
+                const localToken = localTokenInput.value.trim();
+                if (!uuid || !localToken) {
+                    appendLog('❌ 请填写 UUID 和 Local Token', 'log-error');
+                    return;
+                }
+
+                manualBtn.disabled = true;
+                setStatus('手动生成中…', true);
+                clearLog();
+                appendLog('✏️ 手动模式启动', 'log-info');
+
+                try {
+                    appendLog(`UUID: ${uuid}`, 'log-info');
+                    appendLog(`Local Token: ${localToken}`, 'log-info');
+
+                    // 显示拼接过程
+                    appendLog('📐 拼接消息（调试）', 'log-info');
+                    const msg = showConcatDebug(localToken);
+                    if (!msg) throw new Error('拼接消息失败');
+
+                    appendLog('🧮 生成 cloud_token ...', 'log-info');
+                    const cloudToken = getCloudToken(uuid, localToken);
+                    appendLog(`✅ cloud_token: ${cloudToken}`, 'log-success');
+
+                    // 尝试获取 SSH 端口（如果路由器可达）
+                    appendLog('🔌 尝试获取 SSH 临时端口（若路由器可达）...', 'log-info');
+                    try {
+                        const port = await getLocalSsh(cloudToken);
+                        appendLog(`🎉 成功！SSH 端口: ${port} （有效期 5 分钟）`, 'log-success');
+                    } catch (err) {
+                        appendLog(`⚠️ 获取端口失败: ${err.message || err}`, 'log-warn');
+                        appendLog('💡 您可以在路由器同网络下再次尝试，或使用此 cloud_token 通过其他方式获取端口。', 'log-warn');
+                    }
+
+                    setStatus('完成', false);
+                } catch (err) {
+                    appendLog(`❌ 错误: ${err.message || err}`, 'log-error');
+                    setStatus('失败', false);
+                }
+
+                manualBtn.disabled = false;
+            }
+
+            // ---- 事件绑定 ----
+            autoBtn.addEventListener('click', autoLaunch);
+            manualBtn.addEventListener('click', manualLaunch);
+
+            clearLogBtn.addEventListener('click', () => {
+                if (confirm('确定清空日志吗？')) {
+                    clearLog();
+                    appendLog('日志已清空', 'log-info');
+                }
+            });
+
+            copyLogBtn.addEventListener('click', () => {
+                const text = logArea.innerText;
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('日志已复制');
+                }).catch(() => {
+                    const range = document.createRange();
+                    range.selectNode(logArea);
+                    window.getSelection().removeAllRanges();
+                    window.getSelection().addRange(range);
+                    document.execCommand('copy');
+                    window.getSelection().removeAllRanges();
+                    alert('日志已复制');
+                });
+            });
+
+            // 回车快捷启动（根据当前模式）
+            ipInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    if (document.querySelector('input[name="mode"]:checked').value === 'auto') {
+                        autoBtn.click();
+                    } else {
+                        manualBtn.click();
+                    }
+                }
+            });
+
+            // 初始状态
+            appendLog('💡 选择模式：自动（需路由器可达）或手动（输入已获数据）', 'log-info');
+            setStatus('就绪', false);
+            updateLinks(); // 初始化超链接
+
+            // 检测 CryptoJS
+            if (typeof CryptoJS === 'undefined') {
+                appendLog('❌ CryptoJS 库未加载，请检查网络', 'log-error');
+            }
+        })();
+    </script>
+</body>
+</html>
