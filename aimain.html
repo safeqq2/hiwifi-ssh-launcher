@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>极路由 SSH 临时端口获取器</title>
+    <!-- 使用 CryptoJS 进行 HMAC-SHA1 和 Base64 运算 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js">
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 20px;
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 720px;
+            padding: 30px 35px;
+            transition: 0.3s;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1 small {
+            font-size: 14px;
+            font-weight: 400;
+            color: #888;
+        }
+
+        .subtitle {
+            color: #555;
+            font-size: 14px;
+            margin-bottom: 25px;
+            border-left: 4px solid #4a90d9;
+            padding-left: 14px;
+            background: #f8faff;
+            border-radius: 0 8px 8px 0;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            font-weight: 500;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .form-group input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            border: 1.5px solid #d0d7de;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: 0.2s;
+            background: #fafbfc;
+        }
+        .form-group input[type="text"]:focus {
+            border-color: #4a90d9;
+            box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+            background: #fff;
+        }
+
+        .form-group button {
+            background: #4a90d9;
+            color: white;
+            border: none;
+            padding: 10px 28px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 6px rgba(74, 144, 217, 0.3);
+            white-space: nowrap;
+        }
+        .form-group button:hover {
+            background: #357abd;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 144, 217, 0.4);
+        }
+        .form-group button:active {
+            transform: translateY(0);
+        }
+        .form-group button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .log-area {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            font-family: "JetBrains Mono", "Fira Code", monospace;
+            font-size: 13px;
+            border-radius: 10px;
+            padding: 16px 18px;
+            height: 340px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.7;
+            margin-top: 8px;
+            border: 1px solid #2d2d44;
+            box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .log-area .log-info {
+            color: #89b4fa;
+        }
+        .log-area .log-success {
+            color: #a6e3a1;
+        }
+        .log-area .log-error {
+            color: #f38ba8;
+        }
+        .log-area .log-warn {
+            color: #f9e2af;
+        }
+        .log-area .log-divider {
+            color: #585b70;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #444;
+        }
+
+        .status-bar .progress {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid #d0d7de;
+            border-radius: 50%;
+            border-top-color: #4a90d9;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .footer {
+            margin-top: 18px;
+            font-size: 13px;
+            color: #999;
+            text-align: center;
+            border-top: 1px solid #eaeef2;
+            padding-top: 16px;
+        }
+        .footer a {
+            color: #4a90d9;
+            text-decoration: none;
+        }
+
+        /* 滚动条美化 */
+        .log-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        .log-area::-webkit-scrollbar-track {
+            background: #1e1e2e;
+        }
+        .log-area::-webkit-scrollbar-thumb {
+            background: #45475a;
+            border-radius: 4px;
+        }
+        .log-area::-webkit-scrollbar-thumb:hover {
+            background: #585b70;
+        }
+
+        .copy-btn {
+            background: none;
+            border: none;
+            color: #4a90d9;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .copy-btn:hover {
+            background: #eef5ff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>
+            🔐 极路由 SSH 临时端口
+            <small>v1.0</small>
+        </h1>
+        <div class="subtitle">
+            通过路由器本地 API 获取 5 分钟有效的 SSH 端口（需要路由器管理密码已开启）
+        </div>
+
+        <div class="form-group">
+            <label for="ipInput">路由器 IP</label>
+            <input type="text" id="ipInput" value="192.168.199.1" placeholder="例如 192.168.199.1" />
+            <button id="startBtn">▶ 开始获取</button>
+        </div>
+
+        <div class="log-area" id="logArea">
+            <span class="log-info">等待操作……</span>
+        </div>
+
+        <div class="status-bar">
+            <div class="progress">
+                <span id="statusText">就绪</span>
+                <span class="spinner" id="spinner" style="display:none;"></span>
+            </div>
+            <div>
+                <button class="copy-btn" id="copyLogBtn">📋 复制日志</button>
+                <button class="copy-btn" id="clearLogBtn" style="margin-left:8px;">🗑 清空</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            ⚠️ 由于浏览器跨域限制，若请求失败请尝试在路由器同网段下使用，或使用代理 / 浏览器插件。
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            "use strict";
+
+            // DOM 元素
+            const ipInput = document.getElementById('ipInput');
+            const startBtn = document.getElementById('startBtn');
+            const logArea = document.getElementById('logArea');
+            const statusText = document.getElementById('statusText');
+            const spinner = document.getElementById('spinner');
+            const copyLogBtn = document.getElementById('copyLogBtn');
+            const clearLogBtn = document.getElementById('clearLogBtn');
+
+            // 常量
+            const RETRY = 10;
+            const SLEEP_SECOND = 10; // 秒
+
+            // ---- 工具函数 ----
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            // 向日志区域追加文本，支持颜色类
+            function appendLog(message, className = 'log-info') {
+                const span = document.createElement('span');
+                span.className = className;
+                span.textContent = message;
+                logArea.appendChild(span);
+                logArea.appendChild(document.createElement('br'));
+                logArea.scrollTop = logArea.scrollHeight;
+            }
+
+            function clearLog() {
+                logArea.innerHTML = '';
+            }
+
+            // 设置状态文字和 spinner
+            function setStatus(text, busy = false) {
+                statusText.textContent = text;
+                spinner.style.display = busy ? 'inline-block' : 'none';
+            }
+
+            // 简单的 IP 校验
+            function isValidIP(ip) {
+                const parts = ip.trim().split('.');
+                if (parts.length !== 4) return false;
+                return parts.every(p => {
+                    const num = Number(p);
+                    return !isNaN(num) && num >= 0 && num <= 255 && p === String(num);
+                });
+            }
+
+            // ---- 核心 API 调用 ----
+            // 构造 URL
+            function generateUrl(api, ...args) {
+                let path = api;
+                if (args.length > 0) {
+                    path = api.replace('%s', args[0]); // 简单替换
+                }
+                return `http://${ipInput.value.trim()}${path}`;
+            }
+
+            // 封装 fetch，自动处理系统忙和 JSON 解析
+            async function httpGet(url) {
+                // Go 中替换 + 为 %2B
+                url = url.replace(/\+/g, '%2B');
+
+                // 超时控制（10秒）
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                try {
+                    const response = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const text = await response.text();
+                    if (text.includes('系统忙，请稍后重试')) {
+                        throw new Error('系统忙，请稍后重试');
+                    }
+
+                    try {
+                        const data = JSON.parse(text);
+                        return data;
+                    } catch (e) {
+                        throw new Error(`JSON 解析失败: ${text}`);
+                    }
+                } catch (err) {
+                    clearTimeout(timeoutId);
+                    if (err.name === 'AbortError') {
+                        throw new Error('请求超时');
+                    }
+                    throw err;
+                }
+            }
+
+            // 获取 UUID
+            async function getUUID() {
+                const url = generateUrl('/cgi-bin/turbo/proxy/router_info');
+                const data = await httpGet(url);
+                // 结构: { data: { uuid: "..." } }
+                if (!data.data || !data.data.uuid) {
+                    throw new Error('无效的 UUID 响应');
+                }
+                return data.data.uuid;
+            }
+
+            // 获取 local_token
+            async function getLocalToken() {
+                const url = generateUrl('/local-ssh/api?method=get');
+                const data = await httpGet(url);
+                if (!data.data) {
+                    throw new Error('无效的 local_token 响应');
+                }
+                return data.data;
+            }
+
+            // 处理 token 消息
+            function tokenToMsg(localToken) {
+                let decoded;
+                try {
+                    decoded = atob(localToken);
+                } catch (e) {
+                    throw new Error('Base64 解码失败');
+                }
+                const parts = decoded.split(',');
+                if (parts.length < 3) {
+                    throw new Error('token 格式错误');
+                }
+                let ts = parseInt(parts[2], 10);
+                if (isNaN(ts)) {
+                    throw new Error('时间戳格式无效');
+                }
+                ts += 1;
+                parts[2] = String(ts);
+                // 只取前三个字段
+                return parts.slice(0, 3).join(',');
+            }
+
+            // 计算 cloud_token
+            function getCloudToken(uuid, localToken) {
+                const msg = tokenToMsg(localToken);
+                // key = SHA1(uuid) 作为 HMAC 的 key
+                const key = CryptoJS.SHA1(uuid);
+                const hmac = CryptoJS.HmacSHA1(msg, key);
+                const cloudToken = CryptoJS.enc.Base64.stringify(hmac);
+                return cloudToken;
+            }
+
+            // 获取 SSH 端口
+            async function getLocalSsh(cloudToken) {
+                const url = generateUrl('/local-ssh/api?method=valid&data=%s', cloudToken);
+                const data = await httpGet(url);
+                const result = data.data || '';
+                if (!result.includes('Success: ssh port is ')) {
+                    throw new Error(`未知错误: ${result}`);
+                }
+                const port = result.replace('Success: ssh port is ', '').trim();
+                return port;
+            }
+
+            // ---- 主流程 ----
+            async function launchSsh() {
+                // 禁用按钮
+                startBtn.disabled = true;
+                setStatus('运行中…', true);
+                clearLog();
+                appendLog('🚀 开始获取 SSH 临时端口', 'log-info');
+
+                let uuid = '';
+                let localToken = '';
+                let cloudToken = '';
+                let success = false;
+
+                for (let i = 0; i <= RETRY; i++) {
+                    if (i > 0) {
+                        appendLog(`⏳ 等待 ${SLEEP_SECOND} 秒后重试 (第 ${i} 次)`, 'log-warn');
+                        await sleep(SLEEP_SECOND * 1000);
+                        appendLog('----------------------------------------------------------------', 'log-divider');
+                        appendLog(`🔄 第 ${i} 次重试`, 'log-warn');
+                    }
+
+                    try {
+                        appendLog('📡 获取 UUID ...', 'log-info');
+                        uuid = await getUUID();
+                        appendLog(`✅ UUID: ${uuid}`, 'log-success');
+
+                        appendLog('🔑 获取 local_token ...', 'log-info');
+                        localToken = await getLocalToken();
+                        appendLog(`✅ local_token: ${localToken}`, 'log-success');
+
+                        appendLog('🧮 生成 cloud_token ...', 'log-info');
+                        cloudToken = getCloudToken(uuid, localToken);
+                        appendLog(`✅ cloud_token: ${cloudToken}`, 'log-success');
+
+                        appendLog('🔌 获取 SSH 临时端口 ...', 'log-info');
+                        const port = await getLocalSsh(cloudToken);
+                        appendLog(`🎉 成功！SSH 端口: ${port} （有效期 5 分钟，请及时改为永久）`, 'log-success');
+                        success = true;
+                        setStatus('完成', false);
+                        break;
+                    } catch (err) {
+                        const msg = err.message || String(err);
+                        if (msg.includes('系统忙')) {
+                            appendLog(`⚠️ ${msg}`, 'log-warn');
+                        } else {
+                            appendLog(`❌ 错误: ${msg}`, 'log-error');
+                        }
+                        // 如果循环未结束，继续
+                    }
+                }
+
+                if (!success) {
+                    appendLog('❌ 获取失败，请检查 IP、路由器状态及网络。', 'log-error');
+                    appendLog(`IP: ${ipInput.value.trim()}`, 'log-info');
+                    appendLog(`UUID: ${uuid || '未获取'}`, 'log-info');
+                    appendLog(`local_token: ${localToken || '未获取'}`, 'log-info');
+                    appendLog(`cloud_token: ${cloudToken || '未获取'}`, 'log-info');
+                    setStatus('失败', false);
+                }
+
+                startBtn.disabled = false;
+            }
+
+            // ---- 事件绑定 ----
+            startBtn.addEventListener('click', () => {
+                const ip = ipInput.value.trim();
+                if (!ip) {
+                    alert('请输入路由器 IP');
+                    return;
+                }
+                if (!isValidIP(ip)) {
+                    alert('请输入合法的 IPv4 地址');
+                    return;
+                }
+                // 防止重复点击
+                if (startBtn.disabled) return;
+                launchSsh().catch(err => {
+                    appendLog(`❌ 未捕获异常: ${err.message || err}`, 'log-error');
+                    startBtn.disabled = false;
+                    setStatus('异常', false);
+                });
+            });
+
+            // 回车触发
+            ipInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    startBtn.click();
+                }
+            });
+
+            // 复制日志
+            copyLogBtn.addEventListener('click', () => {
+                const text = logArea.innerText;
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('日志已复制到剪贴板');
+                }).catch(() => {
+                    // fallback
+                    const range = document.createRange();
+                    range.selectNode(logArea);
+                    window.getSelection().removeAllRanges();
+                    window.getSelection().addRange(range);
+                    document.execCommand('copy');
+                    window.getSelection().removeAllRanges();
+                    alert('日志已复制');
+                });
+            });
+
+            // 清空日志
+            clearLogBtn.addEventListener('click', () => {
+                if (confirm('确定清空日志吗？')) {
+                    clearLog();
+                    appendLog('日志已清空', 'log-info');
+                }
+            });
+
+            // 初始显示
+            appendLog('💡 输入路由器 IP，点击 “开始获取”', 'log-info');
+            setStatus('就绪', false);
+
+            // 如果浏览器不支持 CryptoJS，提示
+            if (typeof CryptoJS === 'undefined') {
+                appendLog('❌ CryptoJS 库未加载，请检查网络或刷新页面', 'log-error');
+            }
+        })();
+    </script>
+
+</body>
+</html>
